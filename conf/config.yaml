@@ -1,0 +1,41 @@
+defaults:
+  - model: standard.yaml
+  - optimizer: standard.yaml
+  - scm: linear.yaml
+  - _self_
+  - override hydra/hydra_logging: disabled  
+  - override hydra/job_logging: disabled  
+
+
+model:
+  n_positions: 201
+
+scm:
+  noise_types: ['gaussian', 'laplace', 'exponential', 'log-normal', 'uniform']
+  x_dim: 10
+  y_dim: 1
+  t_dim: 1
+
+
+curriculum:
+    dims:
+        start: 5
+        inc: 1
+        interval: 1000
+    points:
+        start: 201
+        inc: 5
+        interval: 500
+
+batch_size: 64
+save_every_steps: 5
+keep_every_steps: 10000
+train_steps: 10
+seed: 1234
+out_dir: output/models/
+test_run: False
+
+hydra:  
+  output_subdir: null  
+  run:  
+    dir: .
