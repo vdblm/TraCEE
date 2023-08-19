@@ -2,4 +2,4 @@
 __pycache__
 output/
 wandb/
-slurm/
+slurm/run-*
