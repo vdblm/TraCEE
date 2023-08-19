@@ -1,5 +1,6 @@
 from src.configs import CurriculumConfig
 
+
 class Curriculum:
     def __init__(self, conf: CurriculumConfig):
         self.n_dims_truncated = conf.dims.start

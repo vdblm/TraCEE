@@ -1,9 +1,9 @@
 import torch.nn as nn
 from transformers import GPT2Model, GPT2Config
-from src.configs import TrainConfig
+from src.configs import TraCEEConfig
 
 
-def build_model(conf: TrainConfig):
+def build_model(conf: TraCEEConfig):
     model = TransformerModel(
         n_dims=conf.model.n_dims,
         n_positions=conf.model.n_positions,
@@ -44,9 +44,10 @@ class TransformerModel(nn.Module):
             raise ValueError(
                 f"Input dimension {xtys_dim} greater than model dimension {self.n_dims}"
             )
-            
-            
+
         embeds = self._read_in(xtys)
-        output = self._backbone(inputs_embeds=embeds).last_hidden_state  # shape: (batch_size, n_positions, n_embd)
-        prediction = self._read_out(output)  # shape: (batch_size, n_positions, 1)
+        # shape: (batch_size, n_positions, n_embd)
+        output = self._backbone(inputs_embeds=embeds).last_hidden_state
+        # shape: (batch_size, n_positions, 1)
+        prediction = self._read_out(output)
         return prediction[:, :, 0]

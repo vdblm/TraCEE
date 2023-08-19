@@ -8,13 +8,14 @@ import torch
 
 from src.models import build_model, TransformerModel
 from src.baselines import get_relevant_baselines
-from src.configs import TrainConfig, SCMConfig, MODELS
+from src.configs import TraCEEConfig, SCMConfig, MODELS
 from src.samplers import get_scm_sampler
 
 
-def get_model_from_run(run_path, step=-1, only_conf=False) -> (torch.nn.Module, TrainConfig):
+def get_model_from_run(run_path, step=-1, only_conf=False) -> (torch.nn.Module,
+                                                               TraCEEConfig):
     with open(os.path.join(run_path, "config.yaml")) as fp:
-        conf = TrainConfig(**yaml.safe_load(fp))
+        conf = TraCEEConfig(**yaml.safe_load(fp))
     if only_conf:
         return None, conf
 
@@ -103,7 +104,8 @@ def get_run_metrics(
             continue
 
         metrics[model.name] = eval_model(
-            model, scm_conf=conf.scm, n_points=conf.curriculum.points.end, batch_size=conf.batch_size)
+            model, scm_conf=conf.scm, n_points=conf.curriculum.points.end,
+            batch_size=conf.train.batch_size)
 
     if save_path is not None:
         with open(save_path, "w") as fp:

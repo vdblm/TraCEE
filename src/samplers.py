@@ -4,6 +4,7 @@ from typing import Tuple
 import torch.distributions as dist
 from src.configs import SCMConfig, NOISE_TYPES
 
+
 def get_scm_sampler(conf: SCMConfig, **kwargs):
     names_to_classes = {
         "linear": LinearSCMSampler,
@@ -18,16 +19,17 @@ def get_scm_sampler(conf: SCMConfig, **kwargs):
 class LinearSCMSampler:
     def __init__(self, conf: SCMConfig):
         if conf.t_dim != 1 or conf.y_dim != 1:
-            raise NotImplementedError("Only 1-dimensional treatments and outcomes are supported")
+            raise NotImplementedError(
+                "Only 1-dimensional treatments and outcomes are supported")
         self.n_dims = conf.x_dim
         self.noise_type = conf.noise_types
-        
+
         if isinstance(self.noise_type, str):
             self.noise_type = [self.noise_type]
 
     def noise_sample(self, shape) -> torch.tensor:
         sampler = None
-        
+
         # choose a random noise type
         noise_type = self.noise_type[torch.randint(len(self.noise_type), (1,))]
         if noise_type == "uniform":
@@ -44,7 +46,7 @@ class LinearSCMSampler:
             raise NotImplementedError
 
         return sampler.sample()
-    
+
     def _add_const(self, shape):
         const_range = 1  # TODO make this a parameter
         return 2 * const_range * torch.rand(shape) - const_range

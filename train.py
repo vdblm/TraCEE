@@ -1,13 +1,12 @@
-import os
-import uuid
 import torch
 
-from clearml import Task
+import wandb
 
 from src.models import build_model
 from src.trainer import train
-from src.configs import TrainConfig, populate_config
+from src.configs import TraCEEConfig, populate_config
 from src.eval import get_run_metrics
+from src.utils import init_run_dir
 
 import hydra
 from omegaconf import OmegaConf
@@ -16,26 +15,26 @@ torch.backends.cudnn.benchmark = True
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
-def main(conf: TrainConfig):
-    task = Task.init(project_name="TraCEE", task_name="Example")
-    
-    conf = populate_config(TrainConfig(**OmegaConf.to_object(conf)))
+def main(conf: TraCEEConfig):
+    conf = populate_config(TraCEEConfig(**OmegaConf.to_object(conf)))
 
     if conf.test_run:
         conf.curriculum.points.start = conf.curriculum.points.end
         conf.curriculum.dims.start = conf.curriculum.dims.end
-        conf.train_steps = 100
+        conf.train.train_steps = 100
     else:
-        run_id = conf.resume_id
-        if run_id is None:
-            run_id = str(uuid.uuid4())
-
-        out_dir = os.path.join(conf.out_dir, run_id)
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-        conf.out_dir = out_dir
-
-        OmegaConf.save(conf.dict(), os.path.join(out_dir, "config.yaml"))
+        conf = init_run_dir(conf)
+        wandb.init(
+            dir=conf.out_dir,
+            project=conf.wandb.project,
+            entity=conf.wandb.entity,
+            config=conf.dict(),
+            name=conf.wandb.run_name,
+            id=conf.wandb.run_id,
+            resume="allow" if conf.wandb.resume else False,
+            # compatible with hydra
+            settings=wandb.Settings(start_method="thread")
+        )
 
     model = build_model(conf)
 

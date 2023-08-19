@@ -4,9 +4,11 @@ import torch
 
 import torch.nn as nn
 
-from src.configs import TrainConfig
+from src.configs import TraCEEConfig
 from src.curriculum import Curriculum
 from src.samplers import get_scm_sampler
+
+import wandb
 
 
 def train_step(model, xs, ys, optimizer, loss_func):
@@ -18,13 +20,13 @@ def train_step(model, xs, ys, optimizer, loss_func):
     return loss.detach().item(), output.detach()
 
 
-def train(model: nn.Module, conf: TrainConfig):
+def train(model: nn.Module, conf: TraCEEConfig):
     model.cuda()
     model.train()
 
     # initialize optimizer
     optimizer = torch.optim.Adam(
-        model.parameters(), lr=conf.optimizer.learning_rate)
+        model.parameters(), lr=conf.train.learning_rate)
 
     curriculum = Curriculum(conf.curriculum)
 
@@ -32,7 +34,7 @@ def train(model: nn.Module, conf: TrainConfig):
 
     # resume if the training was interrupted
     state_path = os.path.join(conf.out_dir, "state.pt")
-    if os.path.exists(state_path):
+    if conf.wandb.resume:
         state = torch.load(state_path)
         model.load_state_dict(state["model_state_dict"])
         optimizer.load_state_dict(state["optimizer_state_dict"])
@@ -42,9 +44,9 @@ def train(model: nn.Module, conf: TrainConfig):
         for i in range(state["train_step"] + 1):
             curriculum.update()
 
-    bsize = conf.batch_size
+    bsize = conf.train.batch_size
     scm_sampler = get_scm_sampler(conf=conf.scm)
-    pbar = tqdm(range(starting_step, conf.train_steps))
+    pbar = tqdm(range(starting_step, conf.train.train_steps))
 
     for i in pbar:
 
@@ -57,31 +59,19 @@ def train(model: nn.Module, conf: TrainConfig):
         loss, output = train_step(
             model, xtys.cuda(), ATEs.cuda(), optimizer, loss_func)
 
-        point_wise_tags = list(range(curriculum.n_points))
-        point_wise_loss = (output - ATEs.cuda()).square().mean(dim=0)
-
-        baseline_loss = (
-            sum(
-                max(curriculum.n_dims_truncated - ii, 0)
-                for ii in range(curriculum.n_points)
-            )
-            / curriculum.n_points
-        )
-
         # LOGGING
-        # if i % args.wandb.log_every_steps == 0 and not args.test_run:
-        #     wandb.log(
-        #         {
-        #             "overall_loss": loss,
-        #             "excess_loss": loss / baseline_loss,
-        #             "pointwise/loss": dict(
-        #                 zip(point_wise_tags, point_wise_loss.cpu().numpy())
-        #             ),
-        #             "n_points": curriculum.n_points,
-        #             "n_dims": curriculum.n_dims_truncated,
-        #         },
-        #         step=i,
-        #     )
+        if i % conf.wandb.log_every_steps == 0 and not conf.test_run:
+            wandb.log({"overall/loss": loss, "n_points": curriculum.n_points,
+                      "n_dims": curriculum.n_dims_truncated}, step=i)
+
+            # pointwise data
+            point_wise_tags = list(range(curriculum.n_points))
+            point_wise_loss = (output - ATEs.cuda()).square().mean(dim=0)
+            df = wandb.Table(
+                data=list(zip(point_wise_tags, point_wise_loss.cpu().numpy())),
+                columns=["samples", "loss"])
+            wandb.log(
+                {"pointwise/loss": wandb.plot.line(df, "samples", "loss")}, step=i)
 
         curriculum.update()
 

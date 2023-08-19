@@ -1,0 +1,19 @@
+---
+program: train.py
+method: bayes
+metric:
+    goal: minimize
+    name: overall/loss
+parameters:
+    scm.x_dim:
+        values: [10, 15, 20]
+
+    scm.noise_types:
+        values:
+        - [gaussian]
+        - [gaussian, laplace]
+
+command:
+    - ${env}
+    - ./slurm/train_runner.sh
+    - ${args_no_hyphens}

@@ -47,26 +47,35 @@ class SCMConfig(BaseModel):
         return v
 
 
-class OptimizerConfig(BaseModel):
+class TrainerConfig(BaseModel):
+    train_steps: int
+    batch_size: int
     learning_rate: float
 
 
-class TrainConfig(BaseModel):
-    train_steps: int
-    batch_size: int
+class WandbConfig(BaseModel):
+    project: str
+    entity: Optional[str]
+    log_every_steps: int
+    run_name: Optional[str]
+    run_id: Optional[str]
+    resume: bool = False
+
+
+class TraCEEConfig(BaseModel):
     save_every_steps: int
     keep_every_steps: int
     curriculum: CurriculumConfig
     scm: SCMConfig
-    optimizer: OptimizerConfig
+    train: TrainerConfig
     model: TransformerConfig
     out_dir: str
     seed: int
-    resume_id: Optional[str]
     test_run: bool
-    
+    wandb: WandbConfig
 
-def populate_config(config: TrainConfig) -> TrainConfig:
+
+def populate_config(config: TraCEEConfig) -> TraCEEConfig:
     if config.curriculum.dims.end is None:
         config.curriculum.dims.end = config.scm.x_dim
     else:
