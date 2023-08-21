@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=python-script
+#SBATCH --job-name=tracee
 #SBATCH -p a40,t4v2,rtx6000
 #SBATCH --gres=gpu:1
 #SBATCH --qos=normal

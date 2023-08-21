@@ -8,18 +8,19 @@ MODELS = ['gpt2']
 
 class CurriculumBaseConfig(BaseModel):
     start: int
-    end: Optional[int]
+    end: int
     inc: int
     interval: int
 
 
+# TODO fill out the inc and interval based on training steps
 class CurriculumConfig(BaseModel):
     dims: CurriculumBaseConfig
     points: CurriculumBaseConfig
 
 
 class TransformerConfig(BaseModel):
-    n_dims: Optional[int]
+    n_dims: int
     n_embd: int
     n_layer: int
     n_head: int
@@ -67,6 +68,7 @@ class TraCEEConfig(BaseModel):
     keep_every_steps: int
     curriculum: CurriculumConfig
     scm: SCMConfig
+    validate_scm: SCMConfig
     train: TrainerConfig
     model: TransformerConfig
     out_dir: str
@@ -74,22 +76,20 @@ class TraCEEConfig(BaseModel):
     test_run: bool
     wandb: WandbConfig
 
+    @validator("model")
+    def model_validation(cls, model_value, values, field, config):
+        curriculum_dims_end = values["curriculum"].dims.end
+        curriculum_points_end = values["curriculum"].points.end
+        scm_dims = values["scm"].x_dim + \
+            values["scm"].t_dim + values["scm"].y_dim
 
-def populate_config(config: TraCEEConfig) -> TraCEEConfig:
-    if config.curriculum.dims.end is None:
-        config.curriculum.dims.end = config.scm.x_dim
-    else:
-        assert config.curriculum.dims.end <= config.scm.x_dim
+        assert model_value.n_dims >= scm_dims, \
+            f"Model dimension {model_value.n_dims} is less than SCM dimension {scm_dims}"
 
-    if config.curriculum.points.end is None:
-        config.curriculum.points.end = config.model.n_positions
-    else:
-        assert config.curriculum.points.end <= config.model.n_positions
+        assert model_value.n_positions >= curriculum_points_end, \
+            f"Model seq length {model_value.n_positions} is less than curriculum end points {curriculum_points_end}"
 
-    scm_dim = config.scm.x_dim + config.scm.t_dim + config.scm.y_dim
-    if config.model.n_dims is None:
-        config.model.n_dims = scm_dim
-    else:
-        assert config.model.n_dims >= scm_dim
+        assert curriculum_dims_end <= values["scm"].x_dim, \
+            f"Curriculum dimension {curriculum_dims_end} is greater than SCM dimension {values['scm'].x_dim}"
 
-    return config
+        return model_value

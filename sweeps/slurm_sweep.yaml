@@ -10,8 +10,8 @@ parameters:
 
     scm.noise_types:
         values:
-        - [gaussian]
-        - [gaussian, laplace]
+        - '[gaussian]'
+        - '[gaussian, laplace]'
 
 command:
     - ${env}

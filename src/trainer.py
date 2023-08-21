@@ -20,6 +20,22 @@ def train_step(model, xs, ys, optimizer, loss_func):
     return loss.detach().item(), output.detach()
 
 
+def eval_step(model, xs, ys, loss_func):
+    output = model(xs)
+    loss = loss_func(output, ys)
+    return loss.detach().item(), output.detach()
+
+
+def pointwise_loss(output, ATEs) -> wandb.Table:
+    point_wise_tags = list(range(output.shape[1]))
+    point_wise_loss = (output - ATEs.cuda()).square().mean(dim=0)
+    df = wandb.Table(
+        data=list(zip(point_wise_tags, point_wise_loss.cpu().numpy())),
+        columns=["samples", "loss"])
+
+    return df
+
+# TODO clean the validation/train steps + logging
 def train(model: nn.Module, conf: TraCEEConfig):
     model.cuda()
     model.train()
@@ -46,10 +62,12 @@ def train(model: nn.Module, conf: TraCEEConfig):
 
     bsize = conf.train.batch_size
     scm_sampler = get_scm_sampler(conf=conf.scm)
+    val_scm_sampler = get_scm_sampler(conf=conf.validate_scm)
     pbar = tqdm(range(starting_step, conf.train.train_steps))
 
     for i in pbar:
-
+        # train
+        model.train()
         ATEs, xtys = scm_sampler.sample_xtys(n_points=curriculum.n_points, b_size=bsize,
                                              n_dims_trunc=curriculum.n_dims_truncated)
         ATEs = ATEs.repeat(curriculum.n_points, 1).T
@@ -65,13 +83,27 @@ def train(model: nn.Module, conf: TraCEEConfig):
                       "n_dims": curriculum.n_dims_truncated}, step=i)
 
             # pointwise data
-            point_wise_tags = list(range(curriculum.n_points))
-            point_wise_loss = (output - ATEs.cuda()).square().mean(dim=0)
-            df = wandb.Table(
-                data=list(zip(point_wise_tags, point_wise_loss.cpu().numpy())),
-                columns=["samples", "loss"])
+            train_df = pointwise_loss(output, ATEs)
             wandb.log(
-                {"pointwise/loss": wandb.plot.line(df, "samples", "loss")}, step=i)
+                {"pointwise/loss":
+                 wandb.plot.line(train_df, "samples", "loss")}, step=i)
+
+            # validate
+            model.eval()
+            val_ATEs, val_xtys = val_scm_sampler.sample_xtys(
+                n_points=curriculum.n_points, b_size=bsize,
+                n_dims_trunc=curriculum.n_dims_truncated)
+
+            val_ATEs = val_ATEs.repeat(curriculum.n_points, 1).T
+            val_loss, val_output = eval_step(
+                model, val_xtys.cuda(), val_ATEs.cuda(), loss_func)
+            wandb.log({"overall/val-loss": val_loss}, step=i)
+
+            # pointwise data
+            val_df = pointwise_loss(val_output, val_ATEs)
+            wandb.log(
+                {"pointwise/val-loss":
+                 wandb.plot.line(val_df, "samples", "loss")}, step=i)
 
         curriculum.update()
 

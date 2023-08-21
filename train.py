@@ -4,19 +4,25 @@ import wandb
 
 from src.models import build_model
 from src.trainer import train
-from src.configs import TraCEEConfig, populate_config
+from src.configs import TraCEEConfig
 from src.eval import get_run_metrics
 from src.utils import init_run_dir
+
+from pprint import pprint
 
 import hydra
 from omegaconf import OmegaConf
 
 torch.backends.cudnn.benchmark = True
 
+# Add resolver for hydra
+OmegaConf.register_new_resolver("eval", eval)
+
+# TODO seed
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(conf: TraCEEConfig):
-    conf = populate_config(TraCEEConfig(**OmegaConf.to_object(conf)))
+    conf = TraCEEConfig(**OmegaConf.to_object(conf))
 
     if conf.test_run:
         conf.curriculum.points.start = conf.curriculum.points.end
