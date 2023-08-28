@@ -14,6 +14,7 @@ scm:
   x_dim: 10
   y_dim: 1
   t_dim: 1
+  conf_factor: null
 
 model:
   n_positions: 201
@@ -24,6 +25,7 @@ validate_scm:
   x_dim: ${scm.x_dim}
   y_dim: ${scm.y_dim}
   t_dim: ${scm.t_dim}
+  conf_factor: ${scm.conf_factor}
 
 
 curriculum:

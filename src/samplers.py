@@ -20,9 +20,11 @@ class LinearSCMSampler:
     def __init__(self, conf: SCMConfig):
         if conf.t_dim != 1 or conf.y_dim != 1:
             raise NotImplementedError(
-                "Only 1-dimensional treatments and outcomes are supported")
+                "Only 1-dimensional treatments and outcomes are supported"
+            )
         self.n_dims = conf.x_dim
         self.noise_type = conf.noise_types
+        self.conf_factor = conf.conf_factor
 
         if isinstance(self.noise_type, str):
             self.noise_type = [self.noise_type]
@@ -52,33 +54,51 @@ class LinearSCMSampler:
         return 2 * const_range * torch.rand(shape) - const_range
 
     # TODO add seeds + maybe non-identifiable
-    def sample_xtys(self, n_points, b_size, n_dims_trunc=None) -> Tuple[torch.tensor, torch.tensor]:
+    def sample_xtys(
+        self, n_points, b_size, n_dims_trunc=None
+    ) -> Tuple[torch.tensor, torch.tensor]:
+        covariates_b = self.noise_sample(
+            (b_size, n_points, self.n_dims)
+        ) + self._add_const(
+            (b_size, n_points, self.n_dims)
+        )  # dim: b_size x n_points x n_dims
 
-        covariates_b = self.noise_sample((b_size, n_points, self.n_dims)) + self._add_const(
-            (b_size, n_points, self.n_dims))  # dim: b_size x n_points x n_dims
+        if n_dims_trunc is not None:
+            covariates_b[:, :, n_dims_trunc:] = 0
 
-        w_T = self.noise_sample((b_size, self.n_dims)) + \
-            self._add_const((b_size, self.n_dims))
+        w_T = self.noise_sample((b_size, self.n_dims)) + self._add_const(
+            (b_size, self.n_dims)
+        )
 
-        treatments_probs_b = torch.sigmoid(torch.einsum(
-            'bnp,bp->bn', covariates_b, w_T) + self.noise_sample((b_size, n_points)))
+        treatments_logits_b = torch.einsum(
+            "bnd,bd->bn", covariates_b, w_T
+        ) + self.noise_sample((b_size, n_points))
 
-        treatments_b = torch.bernoulli(
-            treatments_probs_b).reshape(b_size, n_points, 1)
+        if self.conf_factor is not None:
+            w_T_conf = torch.rand((b_size,)) * self.conf_factor
+            conf = torch.rand((b_size, n_points)) * self.conf_factor
+            treatments_logits_b += torch.einsum("b,bn->bn", w_T_conf, conf)
 
-        w_Y = self.noise_sample((b_size, self.n_dims + 1)) + \
-            self._add_const((b_size, self.n_dims + 1))
+        treatments_b = torch.bernoulli(torch.sigmoid(treatments_logits_b)).reshape(
+            b_size, n_points, 1
+        )
 
-        outcomes_b = torch.einsum('bnp,bp->bn', torch.cat(
-            (covariates_b, treatments_b), dim=2), w_Y) + self.noise_sample((b_size, n_points))
+        w_Y = self.noise_sample((b_size, self.n_dims + 1)) + self._add_const(
+            (b_size, self.n_dims + 1)
+        )
+
+        outcomes_b = torch.einsum(
+            "bnp,bp->bn", torch.cat((covariates_b, treatments_b), dim=2), w_Y
+        ) + self.noise_sample((b_size, n_points))
+
+        if self.conf_factor is not None:
+            w_Y_conf = torch.rand((b_size,)) * self.conf_factor
+            outcomes_b += torch.einsum("b,bn->bn", w_Y_conf, conf)
 
         outcomes_b = outcomes_b.reshape(b_size, n_points, 1)
 
         # average treatment effect
         ATE = w_Y[:, -1]
-
-        if n_dims_trunc is not None:
-            covariates_b[:, :, n_dims_trunc:] = 0
 
         # concat covariates_b, treatments_b, outcomes_b
         return ATE, torch.cat((covariates_b, treatments_b, outcomes_b), dim=2)

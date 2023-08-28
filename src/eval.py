@@ -1,36 +1,15 @@
 import os
-import yaml
 import json
 
 from tqdm import tqdm
 
 import torch
 
-from src.models import build_model, TransformerModel
+from src.models import TransformerModel
 from src.baselines import get_relevant_baselines
-from src.configs import TraCEEConfig, SCMConfig, MODELS
+from src.configs import SCMConfig, MODELS
 from src.samplers import get_scm_sampler
-
-
-def get_model_from_run(run_path, step=-1, only_conf=False) -> (torch.nn.Module,
-                                                               TraCEEConfig):
-    with open(os.path.join(run_path, "config.yaml")) as fp:
-        conf = TraCEEConfig(**yaml.safe_load(fp))
-    if only_conf:
-        return None, conf
-
-    model = build_model(conf)
-
-    if step == -1:
-        state_path = os.path.join(run_path, "state.pt")
-        state = torch.load(state_path)
-        model.load_state_dict(state["model_state_dict"])
-    else:
-        model_path = os.path.join(run_path, f"model_{step}.pt")
-        state_dict = torch.load(model_path)
-        model.load_state_dict(state_dict)
-
-    return model, conf
+from src.utils import get_model_from_run
 
 
 def eval_model(
@@ -38,30 +17,37 @@ def eval_model(
     scm_conf: SCMConfig,
     n_points,
     batch_size=64,
-    num_eval_examples=1280
+    num_eval_examples=64,  # TODO increase
 ):
     assert num_eval_examples % batch_size == 0
 
     scm_sampler = get_scm_sampler(scm_conf)
 
-    all_metrics = []
+    mse = []
+    coverage = []
 
     for _ in range(num_eval_examples // batch_size):
-        ates, xtys = scm_sampler.sample_xtys(
-            n_points=n_points, b_size=batch_size)
+        ates, xtys = scm_sampler.sample_xtys(n_points=n_points, b_size=batch_size)
         if torch.cuda.is_available() and model.name.split("_")[0] in MODELS:
             device = "cuda"
         else:
             device = "cpu"
         ates = ates.repeat(n_points, 1).T
-        pred = model(xtys.to(device)).detach()
-        metrics = (pred.cpu() - ates).square()
-        all_metrics.append(metrics)
+        pred, log_var = model(xtys.to(device))
+        pred = pred.detach().cpu()
+        log_var = log_var.detach().cpu()
+        mse.append((pred - ates).square())
 
-    metrics = torch.cat(all_metrics, dim=0)
+        renge = 1.96 * torch.exp(0.5 * log_var)
+        coverage.append((ates >= pred - renge) & (ates <= pred + renge))
+
+    mse = torch.cat(mse, dim=0)
+    coverage = torch.cat(coverage, dim=0)
     results = {}
-    results["mean"] = metrics.mean(dim=0).tolist()
-    results["std"] = metrics.std(dim=0, unbiased=True).tolist()
+    results["mse"] = mse.mean(dim=0).tolist()
+    results["error_std"] = mse.std(dim=0, unbiased=True).tolist()
+    results["coverage"] = coverage.float().mean(dim=0).tolist()
+    results["coverage_std"] = coverage.float().std(dim=0, unbiased=True).tolist()
 
     return results
 
@@ -104,8 +90,11 @@ def get_run_metrics(
             continue
 
         metrics[model.name] = eval_model(
-            model, scm_conf=conf.scm, n_points=conf.curriculum.points.end,
-            batch_size=conf.train.batch_size)
+            model,
+            scm_conf=conf.scm,
+            n_points=conf.curriculum.points.end,
+            batch_size=conf.train.batch_size,
+        )
 
     if save_path is not None:
         with open(save_path, "w") as fp:

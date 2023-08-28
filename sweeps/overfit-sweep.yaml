@@ -24,3 +24,4 @@ command:
     - ${args_no_hyphens}
     - validate_scm.noise_types=[log-normal, uniform]
     - train.train_steps=50001
+    - wandb.project=tracee-overfit

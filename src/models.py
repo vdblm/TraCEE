@@ -1,4 +1,6 @@
+import torch
 import torch.nn as nn
+
 from transformers import GPT2Model, GPT2Config
 from src.configs import TraCEEConfig
 
@@ -33,7 +35,7 @@ class TransformerModel(nn.Module):
         self.n_dims = n_dims
         self._read_in = nn.Linear(n_dims, n_embd)
         self._backbone = GPT2Model(configuration)
-        self._read_out = nn.Linear(n_embd, 1)
+        self._read_out = nn.Linear(n_embd, 2)  # output mean, log-var
 
     def forward(self, xtys):
         xtys_dim = xtys.shape[-1]
@@ -48,6 +50,6 @@ class TransformerModel(nn.Module):
         embeds = self._read_in(xtys)
         # shape: (batch_size, n_positions, n_embd)
         output = self._backbone(inputs_embeds=embeds).last_hidden_state
-        # shape: (batch_size, n_positions, 1)
+        # shape: (batch_size, n_positions, 2)
         prediction = self._read_out(output)
-        return prediction[:, :, 0]
+        return prediction[:, :, 0], prediction[:, :, 1]
