@@ -31,6 +31,7 @@ class TransformerModel(nn.Module):
             embd_pdrop=0.0,
             attn_pdrop=0.0,
             use_cache=False,
+            activation_function="gelu_new"
         )
         self.name = f"gpt2_embd={n_embd}_layer={n_layer}_head={n_head}"
 

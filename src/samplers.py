@@ -1,7 +1,6 @@
 import torch
 
 from torch.utils.data import Dataset
-from typing import Optional
 
 from src.configs import DataConfig
 from src.curriculum import Curriculum
@@ -20,11 +19,13 @@ def get_scm_sampler(conf: DataConfig, **kwargs):
 
 
 # TODO write tests for this
+# TODO add normalizing as a transform func
 class SyntheticSCMSampler:
     def __init__(self, conf: DataConfig):
         self.scm_conf = conf.scm
         self.num_samples = conf.num_samples
         self.curriculum = Curriculum(conf.curriculum)
+        self.normalize = conf.normalize
         self.data = None
 
     def generate_data(self, num_samples: int):
@@ -93,13 +94,20 @@ class LinearSCMSampler(SyntheticSCMSampler):
         treatments_logits_b = torch.einsum("bpx,bxt->bpt", x, w_t) + e_t
 
         # TODO add confounding factor
-
+        # TODO maybe no bernoulli treatments
         t = torch.bernoulli(torch.sigmoid(treatments_logits_b))
 
         y = torch.einsum("bpz,bzy->bpy", torch.cat((x, t), dim=2), w_y) + e_y
 
         # average treatment effect
         ATE = w_y[:, -1, -1]
+        if self.normalize:
+            x = (x - x.mean(dim=1, keepdim=True)) / x.std(
+                dim=1, keepdim=True
+            ).clamp_min(1e-5)
+            y = (y - y.mean(dim=1, keepdim=True)) / y.std(
+                dim=1, keepdim=True
+            ).clamp_min(1e-5)
 
         return ATE, torch.cat((x, t, y), dim=2)
 

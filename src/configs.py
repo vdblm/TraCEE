@@ -59,6 +59,7 @@ class DataConfig(BaseModel):
     scm: SCMConfig
     curriculum: CurriculumConfig
     num_samples: Optional[int] = None
+    normalize: bool = False
 
 
 class TrainerConfig(BaseModel):

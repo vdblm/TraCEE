@@ -1,14 +1,13 @@
 scm:
-  scm_type: linear
-  noise_types:
-      - _target_: torch.distributions.Uniform
-        _args_: [-2., 2.]
-  x_dim: 10
-  y_dim: 1
-  t_dim: 1
+  scm_type: ${train_data.scm.scm_type}
 
-num_samples: null
-normalize: false
+  noise_types: ${train_data.scm.noise_types}
+  x_dim: ${train_data.scm.x_dim}
+  y_dim: ${train_data.scm.y_dim}
+  t_dim: ${train_data.scm.t_dim}
+
+num_samples: ${train_data.num_samples}
+normalize: ${train_data.normalize}
 curriculum:
   dims:
       start: ${eval:'int(${...scm.x_dim} / 2)'}

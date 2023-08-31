@@ -1,27 +1,31 @@
 ---
 program: train.py
-name: noise_test
+name: noise_model_size
 method: grid
 metric:
     goal: minimize
     name: overall/val-loss
 parameters:
-    scm.noise_types:
+    train_data.scm.noise_types:
         values:
           - '[{_target_: torch.distributions.Uniform, _args_: [-2., 2.]}]'
           - '[{_target_: torch.distributions.Uniform, _args_: [-2., 2.]}, {_target_: torch.distributions.Uniform, _args_: [-4., -3.]}]'
-          - '[{_target_: torch.distributions.Uniform, _args_: [-2., 2.]}, {_target_: torch.distributions.Uniform, _args_: [-4., -3.]}, {_target_: torch.distributions.Normal, _args_: [0., 1.]}]'
+          - '[{_target_: torch.distributions.Uniform, _args_: [-2., 2.]}, {_target_: torch.distributions.Uniform, _args_: [-4., -3.]}, {_target_: torch.distributions.Uniform, _args_: [8., 12.]}]'
+          - '[{_target_: torch.distributions.Uniform, _args_: [4., 7.]}]'
 
     model:
-      values: [tiny, small, standard]
+      values: [tiny, small, medium, large, huge]
 
-    train.learning_rate:
+    train_data.normalize:
+      values: [true, false]
+
+    trainer.learning_rate:
       values: [0.001, 0.0001, 0.00005]
 
-    train.train_samples:
-      values: [10000, 50000]
+    train_data.num_samples:
+      values: [10000, 50000, null]
 
-    validate_scm.noise_types:
+    val_data.scm.noise_types:
         values:
           - '[{_target_: torch.distributions.Uniform, _args_: [4., 7.]}]'
 
@@ -29,5 +33,5 @@ command:
     - ${env}
     - ./slurm/train_runner.sh
     - ${args_no_hyphens}
-    - train.train_steps=50001
+    - trainer.train_steps=100001
     - wandb.project=tracee-learn-algo
