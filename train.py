@@ -13,6 +13,8 @@ from src.utils import init_run_dir
 
 from omegaconf import OmegaConf
 
+from pprint import pprint
+
 torch.backends.cudnn.benchmark = True
 
 # Add resolver for hydra
@@ -21,13 +23,13 @@ OmegaConf.register_new_resolver("eval", eval)
 # TODO might use mark_preempting
 # TODO handle multiple runs per agent vs re-running the same run for preemption
 # TODO handle removing a run
-# TODO hyperparam sweep over n_embed, n_layer, n_heads
-# TODO make sure the training procedure actually learns the algorithm
+# TODO wandb does not log after 100k. Maybe log with less freq
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
-def main(conf: TraCEEConfig):
-    conf = TraCEEConfig(**OmegaConf.to_object(conf))
+def main(conf):
+    conf = hydra.utils.instantiate(conf)
+    conf = TraCEEConfig(**OmegaConf.to_container(conf))
 
     # reproducibility
     torch.manual_seed(conf.seed)
@@ -36,9 +38,8 @@ def main(conf: TraCEEConfig):
     random.seed(conf.seed)
 
     if conf.test_run:
-        conf.curriculum.points.start = conf.curriculum.points.end
-        conf.curriculum.dims.start = conf.curriculum.dims.end
-        conf.train.train_steps = 100
+        pprint(conf.dict())
+        conf.trainer.train_steps = 100
     else:
         conf = init_run_dir(conf)
 

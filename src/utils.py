@@ -10,7 +10,6 @@ from src.configs import TraCEEConfig
 from src.models import build_model
 
 from random_word import RandomWords
-from omegaconf import OmegaConf
 
 
 def init_run_dir(conf: TraCEEConfig) -> TraCEEConfig:
@@ -27,7 +26,7 @@ def init_run_dir(conf: TraCEEConfig) -> TraCEEConfig:
     config_yaml = os.path.join(out_dir, "config.yaml")
     if os.path.exists(config_yaml):
         with open(config_yaml) as fp:
-            old_conf = TraCEEConfig(**yaml.safe_load(fp))
+            old_conf = TraCEEConfig(**yaml.load(fp, Loader=yaml.Loader))
         run_id = old_conf.wandb.run_id
     else:
         run_id = wandb.util.generate_id()
@@ -43,7 +42,8 @@ def init_run_dir(conf: TraCEEConfig) -> TraCEEConfig:
     conf.wandb.resume = resume
     conf.wandb.run_id = run_id
     conf.wandb.run_name = run_name
-    OmegaConf.save(conf.dict(), os.path.join(out_dir, "config.yaml"))
+    with open(config_yaml, "w") as fp:
+        yaml.dump(conf.dict(), fp, default_flow_style=False)
 
     return conf
 
@@ -52,7 +52,7 @@ def get_model_from_run(
     run_path, step=-1, only_conf=False
 ) -> (torch.nn.Module, TraCEEConfig):
     with open(os.path.join(run_path, "config.yaml")) as fp:
-        conf = TraCEEConfig(**yaml.safe_load(fp))
+        conf = TraCEEConfig(**yaml.load(fp, Loader=yaml.Loader))
     if only_conf:
         return None, conf
 

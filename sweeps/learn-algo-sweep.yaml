@@ -1,0 +1,33 @@
+---
+program: train.py
+name: noise_test
+method: grid
+metric:
+    goal: minimize
+    name: overall/val-loss
+parameters:
+    scm.noise_types:
+        values:
+          - '[{_target_: torch.distributions.Uniform, _args_: [-2., 2.]}]'
+          - '[{_target_: torch.distributions.Uniform, _args_: [-2., 2.]}, {_target_: torch.distributions.Uniform, _args_: [-4., -3.]}]'
+          - '[{_target_: torch.distributions.Uniform, _args_: [-2., 2.]}, {_target_: torch.distributions.Uniform, _args_: [-4., -3.]}, {_target_: torch.distributions.Normal, _args_: [0., 1.]}]'
+
+    model:
+      values: [tiny, small, standard]
+
+    train.learning_rate:
+      values: [0.001, 0.0001, 0.00005]
+
+    train.train_samples:
+      values: [10000, 50000]
+
+    validate_scm.noise_types:
+        values:
+          - '[{_target_: torch.distributions.Uniform, _args_: [4., 7.]}]'
+
+command:
+    - ${env}
+    - ./slurm/train_runner.sh
+    - ${args_no_hyphens}
+    - train.train_steps=50001
+    - wandb.project=tracee-learn-algo

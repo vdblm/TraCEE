@@ -1,23 +1,44 @@
-from src.configs import CurriculumConfig
+from src.configs import CurriculumConfig, CurriculumBaseConfig
 
 
 class Curriculum:
     def __init__(self, conf: CurriculumConfig):
-        self.n_dims_truncated = conf.dims.start
-        self.n_points = conf.points.start
-        self.n_dims_schedule = conf.dims
-        self.n_points_schedule = conf.points
-        self.step_count = 0
+        self.conf = conf
 
-    def update(self):
-        self.step_count += 1
-        self.n_dims_truncated = self._update_var(
-            self.n_dims_truncated, self.n_dims_schedule
+    def get_max_dims(self):
+        return self.conf.dims.end
+
+    def get_max_points(self):
+        return self.conf.points.end
+
+    def get_n_dims(self, steps: int):
+        return self._get_current_value(
+            self.conf.dims.start,
+            self.conf.dims.end,
+            self.conf.dims.interval,
+            self.conf.dims.inc,
+            steps,
         )
-        self.n_points = self._update_var(self.n_points, self.n_points_schedule)
 
-    def _update_var(self, var, schedule):
-        if self.step_count % schedule.interval == 0:
-            var += schedule.inc
+    def get_n_points(self, steps: int):
+        return self._get_current_value(
+            self.conf.points.start,
+            self.conf.points.end,
+            self.conf.points.interval,
+            self.conf.points.inc,
+            steps,
+        )
 
-        return min(var, schedule.end)
+    @staticmethod
+    def _get_current_value(start: int, end: int, interval: int, inc: int, steps: int):
+        if interval == 0:
+            return end
+        return min(start + (steps // interval) * inc, end)
+
+    @staticmethod
+    def get_fixed_curriculum(n_points: int, n_dims: int) -> CurriculumConfig:
+        dim_conf = CurriculumBaseConfig(start=n_dims, end=n_dims, inc=0, interval=1)
+        point_conf = CurriculumBaseConfig(
+            start=n_points, end=n_points, inc=0, interval=1
+        )
+        return CurriculumConfig(dims=dim_conf, points=point_conf)

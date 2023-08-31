@@ -1,47 +1,40 @@
 defaults:
   - model: standard
-  - train: default
-  - scm: linear
-  - validate_scm: linear
+  - trainer: default
+  - train_data: linear
   - hydra: default
   - wandb: default
   - _self_
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
-scm:
-  noise_types: ['gaussian', 'laplace', 'exponential', 'log-normal', 'uniform']
-  x_dim: 10
-  y_dim: 1
-  t_dim: 1
-  conf_factor: null
+train_data:
+  scm:
+    noise_types:
+      - _target_: torch.distributions.Uniform
+        _args_: [-2., 2.]
+    x_dim: 10
+    y_dim: 1
+    t_dim: 1
+    conf_factor: null
+
+
+val_data: ${train_data}
 
 model:
   n_positions: 201
-  n_dims: ${eval:'${scm.x_dim} + ${scm.y_dim} + ${scm.t_dim}'}
+  n_dims: ${eval:'${train_data.scm.x_dim} + ${train_data.scm.y_dim} + ${train_data.scm.t_dim}'}
 
-validate_scm:
-  noise_types: ${scm.noise_types}
-  x_dim: ${scm.x_dim}
-  y_dim: ${scm.y_dim}
-  t_dim: ${scm.t_dim}
-  conf_factor: ${scm.conf_factor}
+trainer:
+  learning_rate: 0.0001
+  batch_size: 64
+  train_steps: 50001
 
-
-curriculum:
-    dims:
-        start: ${eval:'int(${scm.x_dim} / 2)'}
-        end: ${scm.x_dim}
-        inc: 1
-        interval: ${eval:'int(${train.train_steps} * ${.inc} / (2 * (${.end} - ${.start})))'}
-    points:
-        start: ${eval:'int(${model.n_positions} / 4)'}
-        end: ${model.n_positions}
-        inc: 5
-        interval: ${eval:'int(${train.train_steps} * ${.inc} / (2 * (${.end} - ${.start})))'}
 
 save_every_steps: 1000
 keep_every_steps: 10000
+
+partial_id: false
 
 seed: 1234
 out_dir: output/runs/

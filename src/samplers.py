@@ -1,104 +1,119 @@
 import torch
-from typing import Tuple
 
-import torch.distributions as dist
-from src.configs import SCMConfig, NOISE_TYPES
+from torch.utils.data import Dataset
+from typing import Optional
+
+from src.configs import DataConfig
+from src.curriculum import Curriculum
 
 
-def get_scm_sampler(conf: SCMConfig, **kwargs):
+# Write tests for this
+def get_scm_sampler(conf: DataConfig, **kwargs):
     names_to_classes = {
         "linear": LinearSCMSampler,
     }
-    if conf.scm_type in names_to_classes:
-        sampler_cls = names_to_classes[conf.scm_type]
+    if conf.scm.scm_type in names_to_classes:
+        sampler_cls = names_to_classes[conf.scm.scm_type]
         return sampler_cls(conf, **kwargs)
     else:
         raise NotImplementedError
 
 
-class LinearSCMSampler:
-    def __init__(self, conf: SCMConfig):
-        if conf.t_dim != 1 or conf.y_dim != 1:
+# TODO write tests for this
+class SyntheticSCMSampler:
+    def __init__(self, conf: DataConfig):
+        self.scm_conf = conf.scm
+        self.num_samples = conf.num_samples
+        self.curriculum = Curriculum(conf.curriculum)
+        self.data = None
+
+    def generate_data(self, num_samples: int):
+        raise NotImplementedError
+
+    def get_data(self, batch_size: int, step_number: int):
+        raise NotImplementedError
+
+
+class LinearSCMSampler(SyntheticSCMSampler):
+    def __init__(self, conf: DataConfig):
+        super().__init__(conf)
+        if conf.scm.t_dim != 1 or conf.scm.y_dim != 1:
             raise NotImplementedError(
                 "Only 1-dimensional treatments and outcomes are supported"
             )
-        self.n_dims = conf.x_dim
-        self.noise_type = conf.noise_types
-        self.conf_factor = conf.conf_factor
 
-        if isinstance(self.noise_type, str):
-            self.noise_type = [self.noise_type]
+        self.data = (
+            self.generate_data(self.num_samples)
+            if self.num_samples is not None
+            else None
+        )
 
-    def noise_sample(self, shape) -> torch.tensor:
+    def _noise_sample(self, shape) -> torch.tensor:
         sampler = None
 
         # choose a random noise type
-        noise_type = self.noise_type[torch.randint(len(self.noise_type), (1,))]
-        if noise_type == "uniform":
-            sampler = dist.Uniform(torch.zeros(shape), torch.ones(shape))
-        elif noise_type == "gaussian":
-            sampler = dist.Normal(torch.zeros(shape), torch.ones(shape))
-        elif noise_type == "laplace":
-            sampler = dist.Laplace(torch.zeros(shape), torch.ones(shape))
-        elif noise_type == "exponential":
-            sampler = dist.Exponential(torch.ones(shape))
-        elif noise_type == "log-normal":
-            sampler = dist.LogNormal(torch.zeros(shape), torch.ones(shape))
+        rand_idx = torch.randint(len(self.scm_conf.noise_types), (1,))
+        sampler = self.scm_conf.noise_types[rand_idx]
+        return sampler.sample(shape)
+
+    def generate_data(self, num_scms: int):
+        n_points = self.curriculum.get_max_points()
+        x = self._noise_sample((num_scms, n_points, self.scm_conf.x_dim))
+        e_t = self._noise_sample((num_scms, n_points, self.scm_conf.t_dim))
+        e_y = self._noise_sample((num_scms, n_points, self.scm_conf.y_dim))
+        w_t = self._noise_sample((num_scms, self.scm_conf.x_dim, self.scm_conf.t_dim))
+        w_y = self._noise_sample(
+            (num_scms, self.scm_conf.x_dim + self.scm_conf.t_dim, self.scm_conf.y_dim)
+        )
+
+        return {"x": x, "e_t": e_t, "e_y": e_y, "w_t": w_t, "w_y": w_y}
+
+    def get_data(self, batch_size: int, step_number: int):
+        if self.data is not None:
+            batch_idx = step_number % (self.num_samples // batch_size)
+            start = batch_idx * batch_size
+            end = min((batch_idx + 1) * batch_size, self.num_samples)
+            indices = torch.arange(start, end)
+            scm = self.data
         else:
-            raise NotImplementedError
+            scm = self.generate_data(batch_size)
+            indices = torch.arange(0, batch_size)
 
-        return sampler.sample()
+        points = self.curriculum.get_n_points(step_number)
+        n_dims_trunc = self.curriculum.get_n_dims(step_number)
 
-    def _add_const(self, shape):
-        const_range = 1  # TODO make this a parameter
-        return 2 * const_range * torch.rand(shape) - const_range
+        x = scm["x"][indices, :points, :]
+        x[:, :, n_dims_trunc:] = 0
 
-    # TODO add seeds + maybe non-identifiable
-    def sample_xtys(
-        self, n_points, b_size, n_dims_trunc=None
-    ) -> Tuple[torch.tensor, torch.tensor]:
-        covariates_b = self.noise_sample(
-            (b_size, n_points, self.n_dims)
-        ) + self._add_const(
-            (b_size, n_points, self.n_dims)
-        )  # dim: b_size x n_points x n_dims
+        e_t = scm["e_t"][indices, :points, :]
+        e_y = scm["e_y"][indices, :points, :]
+        w_t = scm["w_t"][indices]
+        w_y = scm["w_y"][indices]
 
-        if n_dims_trunc is not None:
-            covariates_b[:, :, n_dims_trunc:] = 0
+        treatments_logits_b = torch.einsum("bpx,bxt->bpt", x, w_t) + e_t
 
-        w_T = self.noise_sample((b_size, self.n_dims)) + self._add_const(
-            (b_size, self.n_dims)
-        )
+        # TODO add confounding factor
 
-        treatments_logits_b = torch.einsum(
-            "bnd,bd->bn", covariates_b, w_T
-        ) + self.noise_sample((b_size, n_points))
+        t = torch.bernoulli(torch.sigmoid(treatments_logits_b))
 
-        if self.conf_factor is not None:
-            w_T_conf = torch.rand((b_size,)) * self.conf_factor
-            conf = torch.rand((b_size, n_points)) * self.conf_factor
-            treatments_logits_b += torch.einsum("b,bn->bn", w_T_conf, conf)
-
-        treatments_b = torch.bernoulli(torch.sigmoid(treatments_logits_b)).reshape(
-            b_size, n_points, 1
-        )
-
-        w_Y = self.noise_sample((b_size, self.n_dims + 1)) + self._add_const(
-            (b_size, self.n_dims + 1)
-        )
-
-        outcomes_b = torch.einsum(
-            "bnp,bp->bn", torch.cat((covariates_b, treatments_b), dim=2), w_Y
-        ) + self.noise_sample((b_size, n_points))
-
-        if self.conf_factor is not None:
-            w_Y_conf = torch.rand((b_size,)) * self.conf_factor
-            outcomes_b += torch.einsum("b,bn->bn", w_Y_conf, conf)
-
-        outcomes_b = outcomes_b.reshape(b_size, n_points, 1)
+        y = torch.einsum("bpz,bzy->bpy", torch.cat((x, t), dim=2), w_y) + e_y
 
         # average treatment effect
-        ATE = w_Y[:, -1]
+        ATE = w_y[:, -1, -1]
 
-        # concat covariates_b, treatments_b, outcomes_b
-        return ATE, torch.cat((covariates_b, treatments_b, outcomes_b), dim=2)
+        return ATE, torch.cat((x, t, y), dim=2)
+
+
+class SyntheticSCMDataset(Dataset):
+    def __init__(self, sampler: SyntheticSCMSampler, batch_size: int):
+        self.sampler = sampler
+        self.batch_size = batch_size
+
+    def __getitem__(self, index):
+        return self.sampler.get_data(self.batch_size, index)
+
+    def get_current_dim(self, index):
+        return self.sampler.curriculum.get_n_dims(index)
+
+    def get_current_points(self, index):
+        return self.sampler.curriculum.get_n_points(index)

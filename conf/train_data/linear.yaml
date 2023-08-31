@@ -1,0 +1,15 @@
+scm:
+  scm_type: linear
+
+num_samples: null
+curriculum:
+  dims:
+      start: ${eval:'int(${...scm.x_dim} / 2)'}
+      end: ${...scm.x_dim}
+      inc: 1
+      interval: ${eval:'int(${trainer.train_steps} * ${.inc} / (2 * (${.end} - ${.start})))'}
+  points:
+      start: ${eval:'int(${model.n_positions} / 4)'}
+      end: ${model.n_positions}
+      inc: 5
+      interval: ${eval:'int(${trainer.train_steps} * ${.inc} / (2 * (${.end} - ${.start})))'}

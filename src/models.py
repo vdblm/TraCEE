@@ -12,12 +12,15 @@ def build_model(conf: TraCEEConfig):
         n_embd=conf.model.n_embd,
         n_layer=conf.model.n_layer,
         n_head=conf.model.n_head,
+        output_std=conf.partial_id,
     )
     return model
 
 
 class TransformerModel(nn.Module):
-    def __init__(self, n_dims, n_positions, n_embd=128, n_layer=12, n_head=4):
+    def __init__(
+        self, n_dims, n_positions, n_embd=128, n_layer=12, n_head=4, output_std=False
+    ):
         super(TransformerModel, self).__init__()
         configuration = GPT2Config(
             n_positions=n_positions,
@@ -33,9 +36,13 @@ class TransformerModel(nn.Module):
 
         self.n_positions = n_positions
         self.n_dims = n_dims
+        self.output_std = output_std
         self._read_in = nn.Linear(n_dims, n_embd)
         self._backbone = GPT2Model(configuration)
-        self._read_out = nn.Linear(n_embd, 2)  # output mean, log-var
+        if output_std:
+            self._read_out = nn.Linear(n_embd, 2)  # output mean, log-var
+        else:
+            self._read_out = nn.Linear(n_embd, 1)  # output mean
 
     def forward(self, xtys):
         xtys_dim = xtys.shape[-1]
@@ -50,6 +57,12 @@ class TransformerModel(nn.Module):
         embeds = self._read_in(xtys)
         # shape: (batch_size, n_positions, n_embd)
         output = self._backbone(inputs_embeds=embeds).last_hidden_state
-        # shape: (batch_size, n_positions, 2)
+        # shape: (batch_size, n_positions, 1 or 2)
         prediction = self._read_out(output)
-        return prediction[:, :, 0], prediction[:, :, 1]
+        means = prediction[:, :, 0]
+        log_vars = (
+            prediction[:, :, 1]
+            if self.output_std
+            else torch.zeros(means.shape).to(means.device)
+        )
+        return means, log_vars
