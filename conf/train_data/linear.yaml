@@ -7,7 +7,7 @@ scm:
   y_dim: 1
   t_dim: 1
 
-num_samples: null
+num_samples: -1
 normalize: false
 curriculum:
   dims:

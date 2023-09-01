@@ -1,7 +1,7 @@
 ---
 program: train.py
 name: noise_model_size
-method: grid
+method: random
 metric:
     goal: minimize
     name: overall/val-loss
@@ -23,7 +23,7 @@ parameters:
       values: [0.001, 0.0001, 0.00005]
 
     train_data.num_samples:
-      values: [10000, 50000, null]
+      values: [10000, 50000, -1]
 
     val_data.scm.noise_types:
         values:

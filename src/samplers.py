@@ -44,9 +44,7 @@ class LinearSCMSampler(SyntheticSCMSampler):
             )
 
         self.data = (
-            self.generate_data(self.num_samples)
-            if self.num_samples is not None
-            else None
+            self.generate_data(self.num_samples) if self.num_samples > 0 else None
         )
 
     def _noise_sample(self, shape) -> torch.tensor:
